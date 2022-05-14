@@ -42,8 +42,8 @@ class Solution {
 [Floyd's Cycle Detection Algorithm](https://en.wikipedia.org/wiki/Cycle_detection#Floyd's_tortoise_and_hare) 를 보면 중간값을 파악하는 로직을 이용하는데
 내가 했던 방식은 가장 기본적인 방법이라 충분히 개선 여지가 있다.
 
-- https://leetcode.com/problems/palindrome-linked-list/discuss/1137027/JS-Python-Java-C%2B%2B-or-Easy-Floyd's-%2B-Reversal-Solution-w-Explanation
+- <https://leetcode.com/problems/palindrome-linked-list/discuss/1137027/JS-Python-Java-C%2B%2B-or-Easy-Floyd>'s-%2B-Reversal-Solution-w-Explanation
 
 ## 출처
 
-https://leetcode.com/problems/palindrome-linked-list/
+<https://leetcode.com/problems/palindrome-linked-list/>

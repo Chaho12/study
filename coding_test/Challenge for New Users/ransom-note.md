@@ -32,4 +32,4 @@ class Solution {
 
 ## 출처
 
-https://leetcode.com/problems/ransom-note/
+<https://leetcode.com/problems/ransom-note/>
