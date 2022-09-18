@@ -1,6 +1,6 @@
 # Middle of Linked List
 
-목포
+목표
 
 ```
 Given the head of a singly linked list, return the middle node of the linked list.
