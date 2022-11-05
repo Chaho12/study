@@ -1,44 +1,38 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"strconv"
+	"runtime"
+	"time"
 )
 
+func printStats(mem runtime.MemStats) {
+	runtime.ReadMemStats(&mem)
+	fmt.Println("mem.Alloc:", mem.Alloc)
+	fmt.Println("mem.TotalAlloc:", mem.TotalAlloc)
+	fmt.Println("mem.HeapAlloc:", mem.HeapAlloc)
+	fmt.Println("mem.NumGC:", mem.NumGC)
+	fmt.Println("-----")
+}
+
 func main() {
-	if len(os.Args) == 1 {
-		fmt.Println("Please give one or more floats.")
-		os.Exit(1)
-	}
+	var mem runtime.MemStats
+	printStats(mem)
 
-	arguments := os.Args
-	var err error = errors.New("An error")
-	k := 1
-	var n float64
-	for err != nil {
-		if k >= len(arguments) {
-			fmt.Println("None of the arguments is a float!")
-			return
-		}
-		n, err = strconv.ParseFloat(arguments[k], 64)
-		k++
-	}
-
-	min, max := n, n
-	for i := 2; i < len(arguments); i++ {
-		n, err := strconv.ParseFloat(arguments[i], 64)
-		if err == nil {
-			if n < min {
-				min = n
-			}
-			if n > max {
-				max = n
-			}
+	for i := 0; i < 10; i++ {
+		s := make([]byte, 50000000)
+		if s == nil {
+			fmt.Println("Operation failed!")
 		}
 	}
+	printStats(mem)
 
-	fmt.Println("Min:", min)
-	fmt.Println("Max:", max)
+	for i := 0; i < 10; i++ {
+		s := make([]byte, 100000000)
+		if s == nil {
+			fmt.Println("Operation failed!")
+		}
+		time.Sleep(5 * time.Second)
+	}
+	printStats(mem)
 }
