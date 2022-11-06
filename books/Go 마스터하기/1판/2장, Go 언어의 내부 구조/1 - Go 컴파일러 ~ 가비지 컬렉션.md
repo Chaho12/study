@@ -196,6 +196,7 @@ Go 루틴과 Go 스케줄러에 대해서는 `9장 Go 언어읭 동시성`에서
 따라서 이 시점에서 `흰색` 집합의 오브젝트느 가비지 컬렉션 됐다고 표현한다.
 
 ![tricolor](tricolor-algorithm-go.png)
+
 1. A (root node)에서 시작해서 회색으로 전환
 2. A가 연결가능한 노드 (C, D, B)가 있으니 검은색으로 전환
 3. C 부터 회색 처리
@@ -211,6 +212,141 @@ Go 루틴과 Go 스케줄러에 대해서는 `9장 Go 언어읭 동시성`에서
 뮤테이터는 힙에 있는 포인터가 변경될 때마다 쓰기 장벽 (write barrier)이라 부르는 조그만 함수를 실행한다.
 힙에 있는 오브젝트의 포인터가 변경되면, 다시 말해 이 오브젝트에 접근할 수 있게 됐다면, 쓰기 장벅은 이를 회색으로 칠해서 회색 집합에 넣는다.
 
-> 뮤테이터는 검은색 집합의 원소 중 어느 것도 흰색 집합 원소를 가리키지 않는다는 불변 속성 (invariant)을 유지하는 역할을 담당한다. 이 과정에서 쓰기 장벽 함수의 도움을 받는다. 
+> 뮤테이터는 검은색 집합의 원소 중 어느 것도 흰색 집합 원소를 가리키지 않는다는 불변 속성 (invariant)을 유지하는 역할을 담당한다. 이 과정에서 쓰기 장벽 함수의 도움을 받는다.
 > 이러한 불변 속성이 깨지면 가비지 컬렉션 프로세스가 망가진다. 따라서 실행한 프로그램이 이상하고 바라집하지 않는 방식으로 동작한다.
 
+Go 언어의 가비지 컬렉션은 채널 변수에도 적용된다. 도달할 수 없으면서 더 이상 접근하지도 않는 채널을 가비지 컬렉터가 발견하면, 그 채널을 아직 닫지 않았더라도 채널에 할당된 리소스를 해제한다. 채널에 대해서는 9장, 'Go 언어의 동시성' 에서 자세히 소개한다.
+
+Go 언어에서는 가비지 컬렉션을 수동으로 작동시킬 수 있도록 `runtime.GC()` 함수를 제공한다.
+여기서 주의할 점은 `runtime.GC()`를 호출하면 작업이 완전히 끝날 때까지 코드의 실행이 멈춘다는 점이다. 특히 여러 오브젝트를 다루면서 굉장히 바쁘게 돌아가고 있다면 프로그램 전체가 일시적으로 멈출 수 있다.
+이렇게 멈추는 주된 이유는, 모든 것이 굉장히 빠르게 변하고 있는 동안에는 가비지 컬렉션 작업을 수행할 수 없기 때문이다. 이렇게 일시적으로 멈춘 상태를 가비지 컬렉션 안전점 (garbage collection safe-point)이라고 부른다.
+
+### Go 언어 가비지 컬렉터의 구체적인 작동 방식
+
+GO 언어의 가비지 컬렉터에서 갖아 신경 쓰는 부분은 지연 시간을 낮추는 것이다. 다시 말해 가비지 컬렉터의 작동 과정에서 일시적으로 멈추는 시간을 최소화해서 연산을 실시간으로 처리하게 하는 것이다.
+
+가비지 컬렉션에서는 전통적으로 표시 후 쓸어 담기 알고리즘 (mark-and-sweep algorithm)을 사용했다. 이 알고리즘은 가비지 컬렉터를 구현하기 위한 가장 간단한 알고리즘이다.
+
+1. 먼저 프로그램 실행을 잠시 멈추고, 프로그램의 힙에서 접근할 수 있는 오브젝트를 모두 방문한 뒤에 적절히 표시한다.
+2. 그런 다음 접근 할 수 없는 오브젝트를 쓸어 담는다.
+
+이 알고리즘에서 표시 단계를 수행하는 동안, 모든 오브젝트가 흰색, 회색, 검은색 중 하나로 표시된다. ㅗ히색 오브젝트의 자식도 회색으로 칠하지만, 원래 회색이던 오브젝트는 검은색으로 바꾼다.
+그러다가 더 이상 검토할 회색 오브젝트가 없으면 쓸어 담기 단계로 넘어간다. 표시 후 쓸어 담기 알고리즘이 제대로 작동하는 이유는 이 알고리즘의 불변 속성인 검은색 집합에서 흰색 집합을 가리키는 포인터가 없기 때문이다.
+
+표시 후 쓸어 담기 알고리즘은 간단하다는 장점은 있지만, 이를 수행하는 동안 프로그램의 실행을 잠시 멈춰야 한다. 따라서 실제 프로세스에 지연 시간(latency)이 발생하게 된다.
+Go 언어는 가비지 컬렉터를 동시성 프로세스로 실행하고, 앞 절에서 소개한 삼색 알고리즘ㅇ르 적용함으로써 이러한 지연 시간을 최소화하고 있다. 하지만 이렇게 가비지 컬렉터가 동시에 실행되는 동안에 얼마든지 다른 프로세스에 의해 포인터가 변경되거나, 새로운 오브젝트가 생성될 수 있다.
+그래서 가바지 컬렉터를 효율적으로 구현하기가 힘들다. 결론적으로 삼색 알고리즘을 동시에 실행하는 데 갖아 중요한 점은, 표시 후 쓸어 담기 알고리즘의 불변 속성을 유지하는 것이다. 다시 말해 검은색 집합의 오브젝트가 흰색 집합의 오브젝트를 가리키지 않아야 한다.
+
+이러한 문제를 해결하기 위한 한 가지 방법은 이 알고리즘에서 문제 발생 요인을 모두 제거하는 것이다. 따라서 새로운 오브젝트는 반드시 회색 집합으로 가야한다. 그래야 표시 후 쓸어 담기 알고리즘의 불변 속성이 바뀌지 않는다.
+또한 프로그램에 나온 포인터가 이동하면 포인터가 가리키던 오브젝트도 회색으로 변경된다. 회색 집합이 흰색 집합과 검은색 집합 사이의 장벽의 역할을 한다고 볼 수 있다.
+마지막으로 포인터가 변경될 때마다 앞에서 언급한 쓰끼 장벽(write barrier)이라 부르는 Go 코드가 자동으로 실행되면서 색깔 변경 작업을 수행한다.
+
+쓰기 장벽 코드를 실행함으로써 발생하는 지연 시간은 가비지 컬렉터를 동시에 실행하기 위해 치러야 할 대가인 셈이다.
+
+한 가지 주의할 점이 있다. 자바 프로그램 언어는 다양한 가비지 컬렉터를 제공하며, 여러 가지 매개변수를 통해 설정을 다양하게 변경할 수 있다. 이러한 자바 가비지 컬렉터중에서도 G1은 저지연 애플리케이션에 적합하다.
+
+### Unsafe Code
+
+언ㅅ헤이브 코드란 Go 언어의 타입 안정성 및 메모리 보안 검사를 거치지 않는 코드를 말한다. 언세이프 코드라고 하면 대부분 포인터에 관련된 코드를 의미한다. 한 가지 명심할 점은, 프로그램에서 언세이프 코드를 사용하면 위험한 일이 발생할 수 있다는 것이다.
+
+```go
+// unsafe.go
+package main
+
+import (
+	"fmt"
+	"unsafe"
+)
+
+func main() {
+	var value int64 = 5
+	var p1 = &value
+	var p2 = (*int32)(unsafe.Pointer(p1)) // int32 타입 포인터를 생성한다. Go 언어에서 모든 포인터는 unsafe.Pointer로 변활할 수 있다.
+
+	fmt.Println("*p1: ", *p1)
+	fmt.Println("*p2: ", *p2)
+	*p1 = 5434123412312431212
+	fmt.Println(value)
+	fmt.Println("*p2: ", *p2) // 여기가 문제되는 부분
+	*p1 = 54341234
+	fmt.Println(value)
+	fmt.Println("*p2: ", *p2)
+}
+
+/**
+$ go run unsafe.go
+*p1:  5
+*p2:  5
+5434123412312431212
+*p2:  -930866580
+54341234
+*p2:  54341234
+```
+
+32 비트 포인터는 64비트 정수를 담을 수 없다는 점이다.
+
+### unsafe 패키지
+
+https://go.dev/src/unsafe/unsafe.go
+
+```go
+$ grep -v '^//' unsafe.go | grep -v '^$'
+/*
+        Package unsafe contains operations that step around the type safety of Go programs.
+        Packages that import unsafe may be non-portable and are not protected by the
+        Go 1 compatibility guidelines.
+*/
+package unsafe
+type ArbitraryType int
+type IntegerType int
+type Pointer *ArbitraryType
+func Sizeof(x ArbitraryType) uintptr
+func Offsetof(x ArbitraryType) uintptr
+func Alignof(x ArbitraryType) uintptr
+func Add(ptr Pointer, len IntegerType) Pointer
+func Slice(ptr *ArbitraryType, len IntegerType) []ArbitraryType
+```
+
+unsafe 패키지에 대한 나머지 코드는 어디에 있는 걸까?
+Unsafe 패키지를 여러분이 프로그램에서 불러올 때 Go 컴파일러가 구현해준다.
+
+### Unsafe 패키지에 대한 또 다른 예제
+
+```go
+// moreUnsafe.go
+package main
+
+import (
+	"fmt"
+	"unsafe"
+)
+
+func main() {
+	array := [...]int{0, 1, -2, 3, 4}
+	pointer := &array[0]
+	fmt.Print(*pointer, " ")
+	memoryAddress := uintptr(unsafe.Pointer(pointer)) + unsafe.Sizeof(array[0])
+
+	for i := 0; i < len(array)-1; i++ {
+		pointer = (*int)(unsafe.Pointer(memoryAddress))
+		fmt.Print(*pointer, " ")
+		memoryAddress = uintptr(unsafe.Pointer(pointer)) + unsafe.Sizeof(array[0])
+	}
+	fmt.Println()
+
+    // 지정한 포인터와 메모리 주소에는 존재하지 않는 배열의 원소에 접근하고 있다. 이 코드에서는 unsafe 패키지를 사용하고 있기 때문에 Go 컴파일러에서 이런 논리적 에러를 찾아 주지 않는다.
+	pointer = (*int)(unsafe.Pointer(memoryAddress))
+	fmt.Print("One more: ", *pointer, " ")
+	memoryAddress = uintptr(unsafe.Pointer(pointer)) + unsafe.Sizeof(array[0])
+	fmt.Println()
+}
+
+/**
+$ go run test.go
+0 1 -2 3 4
+One more: 1374390152936
+```
+
+## Go 에서 C 코드 호출하기 (skip)
+
+## C 코드에서 Go 함수 호출하기 (skip)
