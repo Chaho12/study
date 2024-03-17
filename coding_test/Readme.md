@@ -24,4 +24,4 @@
 
 ## 가이드
 
-https://inner-game.tistory.com/538 에 정리가 잘 되어있다.
+<https://inner-game.tistory.com/538> 에 정리가 잘 되어있다.
