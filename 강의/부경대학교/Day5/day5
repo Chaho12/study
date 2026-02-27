@@ -1,0 +1,85 @@
+from pyspark.sql import functions as F
+
+def main():
+    try:
+        print("============================================================")
+        print("E-COMMERCE DAILY REPORT - 2026-02-14")
+        print("============================================================")
+
+        df = spark.read.csv("hdfs://namenode:8020/user/data/raw/ecommerce/2026/02/14/ecommerce_logs.csv", header=True, inferSchema=True)
+
+        # 매출(total)
+        df = df.withColumn('total', F.col('price') * F.col('quantity'))
+
+        print("[1] Category Performance")
+        event_df = df.filter(df['event_type'] =='purchase')
+
+        # 카테고리별 이벤트 수, 고유 사용자 수, 총 매출, 구매 건수 계산
+        event_df = df.groupBy('category').agg(
+            F.count('category').alias('event_count'),
+            F.countDistinct('user_id').alias('user_count'),
+            F.sum(F.when(F.col('event_type') == 'purchase', F.col('total'))).alias('total_revenue'),
+            F.count(F.when(F.col('event_type') == 'purchase', F.col('event_type'))).alias('order_count')).orderBy('total_revenue', ascending=False)
+
+        event_df = event_df.withColumn('total_revenue', F.col('total_revenue').cast('float'))
+        event_df = event_df.na.fill(value = 0)
+
+        event_df.show()
+
+        
+        print("[2] Hourly Activity")
+        df = df.withColumn('timestamp', F.to_timestamp('timestamp'))
+        
+        # 시간대별 활동: 시간대(hour)별로 이벤트 수, 활성 사용자 수 계산
+
+        # 타임스탬프에서 시간대 추출
+        hourly_df = df.withColumn('timestamp', F.hour('timestamp'))
+
+        hourly_df = hourly_df.groupBy('timestamp').agg(
+            F.count('event_type').alias('event_count'),
+            # 시간대 별 고유 사용자 수로, 활성 사용자 수 계산
+            countDistinct('user_id').alias('activated_user_count')).orderBy('timestamp')
+        hourly_df.show()
+        
+        
+        print("[3] Event Funnel")
+        # 전환율 분석: 단계별 건수 계산
+
+        # 단계별 정렬위한 리스트 생성 .... > 어떻게?!
+        stage = ['view', 'add_to_cart', 'purchase']
+
+        stage_df = df.groupBy('event_type').agg(
+            F.count('session_id').alias('stage_count')).orderBy('stage_count', ascending=False)
+        stage_df.show()
+        
+        
+        print("[4] Top 5 Users by Revenue")
+        # 사용자별 행동: 총 이벤트 수, 세션 수, 총 지출액 계산
+
+        user_df = df.groupBy('user_id').agg(
+            F.count('event_type').alias('total_event_count'),
+            F.count('session_id').alias('session_count'),
+            F.sum(F.when(F.col('event_type') == 'purchase', F.col('total'))).alias('total_spent')).orderBy('user_id').limit(5)
+        user_df.show()
+        
+        # 분석 결과 HDFS 저장
+
+        # 카테고리별 통계
+        event_df.write.parquet("hdfs://namenode:8020/user/data/processed/ecommerce/2026/02/14/category_stats", 
+                                mode="overwrite")
+        # 시간대별 활동
+        hourly_df.write.parquet("hdfs://namenode:8020/user/data/processed/ecommerce/2026/02/14/hourly_activity", 
+                                mode="overwrite")
+        # 전환율 분석
+        stage_df.write.parquet("hdfs://namenode:8020/user/data/processed/ecommerce/2026/02/14/funnel", 
+                                mode="overwrite")
+        # 사용자별 행동
+        user_df.write.parquet("hdfs://namenode:8020/user/data/processed/ecommerce/2026/02/14/user_behavior", 
+                                mode="overwrite")
+        print("모든 결과 저장")
+        
+    except Exception as e:
+        logger.error(f"❌ Pipeline failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
